@@ -329,85 +329,131 @@ void prop2(double *data, const int n, double lambda, double dz, double gridwidth
 }
 
 // Siegman transform
-void st2(double *data, const int n/*enlarged grid size*/, double lambda, double dgridin, double dgridout, double* ABDlist/*0->A, 1->B, 2->D*/, int ncar/*orig grid size*/, bool outQ = false) {
+// NOTE: dx should be 2*dgrid/ncar
+void st2(double *data, const int n/*enlarged grid size*/, double lambda, double dgridin, double dgridout, double* ABDlist/*0->A, 1->B, 2->D*/, int ncar/*orig grid size*/, bool verboseQ = false, bool outQ = false) {
 /* Propagate radiation stored in data. */
 
    double tau = 6.283185307179586;
-   double tr,ti,phase,phasefactor,dx,scale=1.,M=dgridout/dgridin;
+   double tr,ti,phase,phasefactor,dx,dxscale,scale=1.,M=dgridout/dgridin;
    
+   //dx = dgridout/double(ncar-1.);
+   //dx = 2.*dgridout/double(ncar-1.); //cout << "if: dx = " << dx << endl;
+
    if(outQ) {
-      dx = dgridout/double(ncar-1.);
+      dx = 2.*dgridout/double(ncar-1.);
       phasefactor = (1./M-ABDlist[2])*dx*dx*tau/2./lambda/ABDlist[1];
-      //scale = 1./dgridout; //for genesis, each cell is intensity so don't need this
+      scale = dgridout; //for genesis, each cell is intensity so don't need this
+      if(verboseQ) {
+          cout << "(1./M-ABDlist[2]) = " << (1./M-ABDlist[2]) << "\tdx*dx*tau/2. = " << dx*dx*tau/2. 
+          << "\tlambda = " << lambda << "\tABDlist[1] = " << ABDlist[1] << endl;
+      }
+        
    }
    else {
-      dx = dgridin/double(ncar-1.);
+      dx = 2.*dgridin/double(ncar-1.);
       phasefactor = (M-ABDlist[0])*dx*dx*tau/2./lambda/ABDlist[1];
-      //scale = dgridin; //for genesis, each cell is intensity so don't need this
+      scale = dgridin; //for genesis, each cell is intensity so don't need this
+      if(verboseQ) {
+          cout << "(M-ABDlist[0]) = " << (M-ABDlist[0]) << "\tdx*dx*tau/2. = " << dx*dx*tau/2. 
+          << "\tlambda = " << lambda << "\tABDlist[1] = " << ABDlist[1] << endl;
+      }
    }
    
+   dxscale = dx / scale;
+   
    int midpoint=(double(ncar)+1.)/2.-1;
-   cout << "st2: dx = " << dx << endl;
-   cout << "st2: phasefactor = " << phasefactor << endl;
-   cout << "st2: midpoint = " << midpoint << endl;
+   if(verboseQ) {
+       cout << "st2: dx = " << dx << endl;
+       cout << "st2: phasefactor = " << phasefactor << endl;
+       cout << "st2: midpoint = " << midpoint << endl;
+   }
    int ind = 2*(n*midpoint+midpoint); // store index for the real field component to save time
    double sqrtintens = sqrt(pow(data[ind],2.)+pow(data[ind+1],2.));
-   cout << "st2: fldampmid = " << sqrtintens << endl;
-   cout << "st2: intensmid = " << pow(sqrtintens,2.) << endl;
-   cout << "st2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   if(verboseQ) {
+       cout << "st2: fldampmid = " << sqrtintens << endl;
+       cout << "st2: intensmid = " << pow(sqrtintens,2.) << endl;
+       cout << "st2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   }
    double norm = 0.;
    for(int i=0; i<n; i++) {
       for(int j=0; j<n; j++) {
          ind=2*(n*j+i);
+         
+         // read in 
          tr=data[ind];
          // NOTE: genesis has flipped sign for imaginary part of field so need to flip it before and after doing the transformation; thus, the minus sign here
          if(outQ) {ti=data[ind+1];}
-         else {ti=-data[ind+1];} 
+         else {ti=-data[ind+1];}
+         
+         /* this is redundant and slows down stuff
+         
+         // turn back to power
+         if(outQ) {
+             tr *= dxscale;
+             ti *= dxscale;
+         }
+         else { // turn to intensity
+             tr /= dxscale;
+             ti /= dxscale;
+         }*/
+         
+         // change phase
          phase = phasefactor*(pow(i-midpoint,2.)+pow(j-midpoint,2.));
          data[ind]=tr*cos(phase)-ti*sin(phase);
          // NOTE: genesis has flipped sign for imaginary part of field so need to flip it before and after doing the transformation; thus, the minus sign here
-         if(outQ) {data[ind+1]=-ti*cos(phase)-tr*sin(phase);}
-         else {data[ind+1]=ti*cos(phase)+tr*sin(phase);}
+         if(outQ) {data[ind+1]=-(ti*cos(phase)+tr*sin(phase));}
+         else {data[ind+1]=(ti*cos(phase)+tr*sin(phase));}
+         
          // add up power
          norm += pow(tr,2.) + pow(ti,2.);
       }
    }
-   cout << "st2: power = " << norm << endl;
+   if(verboseQ) cout << "st2: power = " << norm << endl;
    ind = 2*(n*midpoint+midpoint); // store index for the real field component to save time
    sqrtintens = sqrt(pow(data[ind],2.)+pow(data[ind+1],2.));
-   cout << "st2: fldampmid = " << sqrtintens << endl;
-   cout << "st2: intensmid = " << pow(sqrtintens,2.) << endl;
-   cout << "st2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   if(verboseQ) {
+       cout << "st2: fldampmid = " << sqrtintens << endl;
+       cout << "st2: intensmid = " << pow(sqrtintens,2.) << endl;
+       cout << "st2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   }
 }
 
 // inverse Siegman transform
-void ist2(double *data, const int n/*enlarged grid size*/, double lambda, double dgridin, double dgridout, double* ABDlist/*0->A, 1->B, 2->D*/, int ncar/*orig grid size*/) {
-   return st2(data, n, lambda, dgridin, dgridout, ABDlist, ncar, true);
+// NOTE: looks like Nc needs that extra factor of 4 so that the B elem in the ABCD matrix behaves properly
+void ist2(double *data, const int n/*enlarged grid size*/, double lambda, double dgridin, double dgridout, double* ABDlist/*0->A, 1->B, 2->D*/, int ncar/*orig grid size*/, bool verboseQ = false) {
+   return st2(data, n, lambda, dgridin, dgridout, ABDlist, ncar, verboseQ, true);
 }
 
 // Siegman kernel
-void sk2(double *data, const int n/*enlarged grid size*/, double lambda, double dgridin, double dgridout, double* ABDlist/*0->A, 1->B, 2->D*/, int ncar/*orig grid size*/) {
+void sk2(double *data, const int n/*enlarged grid size*/, double lambda, double dgridin, double dgridout, double* ABDlist/*0->A, 1->B, 2->D*/, int ncar/*orig grid size*/, bool verboseQ = false) {
 /* Propagate radiation stored in data. */
 
    double tau = 6.283185307179586;
    double tr,ti,phase,phasefactor,Nc,f,M=dgridout/dgridin/*mag*/;
    
-   Nc = M*pow(2*dgridin,2.)/lambda/ABDlist[1]; // collimated Fresnel number 
-   f=pow(double(ncar)/double(n),2.); // fudge factor for when n!=ncar 
-   cout << "sk2: Nc = " << Nc << endl;
-   cout << "sk2: f = " << f << endl;
-   cout << "sk2: f*Nc = " << f*Nc << endl;
+   //Nc = M*pow(dgridin,2.)/lambda/ABDlist[1]; // collimated Fresnel number 
+   Nc = M*pow(2.*dgridin,2.)/lambda/ABDlist[1]; // collimated Fresnel number 
+   f = pow(double(ncar)/double(n),2.); // fudge factor for when n!=ncar 
+   if(verboseQ) {
+       cout << "sk2: Nc = " << Nc << endl;
+       cout << "sk2: f = " << f << endl;
+       cout << "sk2: f*Nc = " << f*Nc << endl;
+   }
    
    phasefactor = tau*f/2./Nc;
    
    double midpt=double(n)/2.; 
-   cout << "sk2: phasefactor = " << phasefactor << endl;
-   cout << "sk2: midpt = " << midpt << endl;
+   if(verboseQ) {
+       cout << "sk2: phasefactor = " << phasefactor << endl;
+       cout << "sk2: midpt = " << midpt << endl;
+   }
    int ind = 0; // store index for the real field component to save time
    double sqrtintens = sqrt(pow(data[ind],2.)+pow(data[ind+1],2.));
-   cout << "sk2: fldampmid = " << sqrtintens << endl;
-   cout << "sk2: intensmid = " << pow(sqrtintens,2.) << endl;
-   cout << "sk2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   if(verboseQ) {
+       cout << "sk2: fldampmid = " << sqrtintens << endl;
+       cout << "sk2: intensmid = " << pow(sqrtintens,2.) << endl;
+       cout << "sk2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   }
    for(int i=0; i<n; i++) {
       for(int j=0; j<n; j++) {
          ind=2*(n*j+i);
@@ -420,8 +466,10 @@ void sk2(double *data, const int n/*enlarged grid size*/, double lambda, double 
    }
    ind = 0;
    sqrtintens = sqrt(pow(data[ind],2.)+pow(data[ind+1],2.));
-   cout << "sk2: fldampmid = " << sqrtintens << endl;
-   cout << "sk2: intensmid = " << pow(sqrtintens,2.) << endl;
-   cout << "sk2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   if(verboseQ) {
+       cout << "sk2: fldampmid = " << sqrtintens << endl;
+       cout << "sk2: intensmid = " << pow(sqrtintens,2.) << endl;
+       cout << "sk2: phasemid = " << acos( data[ind] / sqrtintens ) * sgn( asin( data[ind+1] / sqrtintens ) ) << endl;
+   }
 }
 
