@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 
 # rfp - radiation field propagator
@@ -35,7 +36,7 @@ try: # much faster to parallelize
     def ifft2(array, axes=None, overwrite_input=overwrite_input):
         return pyfftw.interfaces.numpy_fft.ifft2(array,axes=axes,threads=threads, planner_effort=planner_effort,overwrite_input=overwrite_input)
 except:
-    print('WARNING: Could not load pyfftw for faster, parallelized ffts')
+    print('WARNING: Could not load pyfftw for faster, parallelized ffts. (At command line, try: pip install pyfftw)')
     def fft(array, axis=None):
         return np.fft.fft(array,axis=axis)
     def fftn(array, axes=None):
@@ -66,16 +67,20 @@ cmap = jetvar_cmap
 # cmap = 'jet'
 #cmap = 'viridis'
 
-# inferno reversed colormap with white background
-from matplotlib import cm
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-inferno_r_cmap = cm.get_cmap('inferno_r')
-# my_cmap.set_under('w') # don't seem to work
-xr = np.linspace(0, 1, 256)
-inferno_r_cmap_listed = inferno_r_cmap(xr)
-inferno_r_whitebg_cmap_listed = np.vstack((np.array([np.ones(4)+(inferno_r_cmap_listed[0]-np.ones(4))*x for x in np.linspace(0,1,int(256/8))]),inferno_r_cmap_listed[:-int(256/16)]))
-inferno_r_whitebg_cmap = ListedColormap(inferno_r_whitebg_cmap_listed)
-cmap = inferno_r_whitebg_cmap
+try:
+    # inferno reversed colormap with white background
+    from matplotlib import cm
+    from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+    inferno_r_cmap = cm.get_cmap('inferno_r')
+    # my_cmap.set_under('w') # don't seem to work
+    xr = np.linspace(0, 1, 256)
+    inferno_r_cmap_listed = inferno_r_cmap(xr)
+    inferno_r_whitebg_cmap_listed = np.vstack((np.array([np.ones(4)+(inferno_r_cmap_listed[0]-np.ones(4))*x for x in np.linspace(0,1,int(256/8))]),inferno_r_cmap_listed[:-int(256/16)]))
+    inferno_r_whitebg_cmap = ListedColormap(inferno_r_whitebg_cmap_listed)
+    cmap = inferno_r_whitebg_cmap
+except:
+    pass
+    
 
 
 def Rdrift(L):
@@ -236,7 +241,7 @@ def make_gaus_beam(ncar=251, dgrid=400.e-6, w0=40.e-6, dt=1e-6/3e8, t0=0., nslic
     return fld0
 
 # note: if slice < 0, then this thing marginalizes axis -slice == [1,2,3]
-def plot_fld_slice(fld, dgrid = 400.e-6, dt=1e-6/3e8, slice=None, ax=None, saveFilename=None, showPlotQ=True, plotPowerQ=False):
+def plot_fld_slice(fld, dgrid = 400.e-6, dt=1e-6/3e8, slice=None, ax=None, saveFilename=None, showPlotQ=True, savePlotQ=True, plotPowerQ=False, logScaleQ=False):
     try:
         if slice == None:
             power = np.abs(fld[0])**2
@@ -306,7 +311,8 @@ def plot_fld_slice(fld, dgrid = 400.e-6, dt=1e-6/3e8, slice=None, ax=None, saveF
     annotation2 += xn+' fwhm '+str(xfwhm)+' '+xu
     
     aspect = (min(xs)-max(xs)) / (min(ys)-max(ys))
-    showPlotQ &= (ax == None)
+    # if ax is defined, then collecting plots
+    showPlotQ &= (ax == None); savePlotQ &= (ax == None)
     if ax == None: ax = plt.gca()
     if plotPowerQ:
         ax.plot(xs,xproj)
@@ -322,14 +328,16 @@ def plot_fld_slice(fld, dgrid = 400.e-6, dt=1e-6/3e8, slice=None, ax=None, saveF
         ax.text(min(xs)+0.01*(max(xs)-min(xs)),min(ys)+0.01*(max(ys)-min(ys)),annotation2,fontsize=10)
         ax.plot(xs, min(ys)+xproj/max(xproj)*0.15*(max(ys)-min(ys)),'k')
         ax.plot(min(xs)+yproj/max(yproj)*0.15*(max(xs)-min(xs)), ys,'k')
-    if saveFilename != None:
+    if logScaleQ:
+        ax.set_yscale('log')
+    if saveFilename != None and savePlotQ:
         plt.savefig(saveFilename, bbox_inches='tight')
-        plt.close()
-    if showPlotQ: 
+    if showPlotQ:
         plt.show()
+    plt.close()
     
-def plot_fld_power(fld, dt, ax=None, saveFilename=None, showPlotQ=True):
-    plot_fld_slice(fld, 400e-6, dt, slice=-1, ax=ax, saveFilename=saveFilename, showPlotQ=showPlotQ, plotPowerQ=True)
+def plot_fld_power(fld, dt, ax=None, saveFilename=None, showPlotQ=True, savePlotQ=True, logScaleQ=False):
+    plot_fld_slice(fld, 400e-6, dt, slice=-1, ax=ax, saveFilename=saveFilename, showPlotQ=showPlotQ, savePlotQ=savePlotQ, plotPowerQ=True, logScaleQ=logScaleQ)
     
 def plot_fld_marginalize_3(fld, dgrid, dt, title=None):
     fig, axs = plt.subplots(1,3)
@@ -347,8 +355,8 @@ def plot_fld_marginalize_3(fld, dgrid, dt, title=None):
                     #hspace=0.4) 
     plt.show()
 
-def plot_fld_marginalize_t(fld, dgrid = 400.e-6, dt=1e-6/3e8, saveFilename=None, showPlotQ=True):
-    plot_fld_slice(fld, dgrid=dgrid, dt=dt, slice=-3, saveFilename=saveFilename, showPlotQ=showPlotQ)
+def plot_fld_marginalize_t(fld, dgrid = 400.e-6, dt=1e-6/3e8, saveFilename=None, showPlotQ=True, savePlotQ=True):
+    plot_fld_slice(fld, dgrid=dgrid, dt=dt, slice=-3, saveFilename=saveFilename, showPlotQ=showPlotQ, savePlotQ=savePlotQ)
 
 # https://stackoverflow.com/questions/10917495/matplotlib-imshow-in-3d-plot
 # https://stackoverflow.com/questions/30464117/plotting-a-imshow-image-in-3d-in-matplotlib
@@ -411,13 +419,7 @@ def plot_fld_3d(fld, dgrid = 400.e-6, dt=1e-6/3e8):
 
     plt.tight_layout(); plt.show()
 
-def write_dfl(fld, filename):
-    
-    f=open(filename,"wb")
-    fld.astype('complex128').tofile(f)
-    f.close()
-
-def read_dfl(filename, ncar=251, verboseQ=1):
+def read_dfl(filename, ncar=251, verboseQ=1, conjugate_field_for_genesis=True, swapxyQ=True):
     
     t0 = time.time()
     fld = np.fromfile(filename, dtype='complex128')
@@ -430,7 +432,29 @@ def read_dfl(filename, ncar=251, verboseQ=1):
     fld = fld.reshape(nslice,ncar,ncar)
     if verboseQ: print(time.time()-t0,'seconds to reshape fld array',fld.shape)
     
-    return fld
+    if swapxyQ:
+        t0 = time.time()
+        fld = np.einsum('ikj->ijk',fld)
+        if verboseQ: print(time.time()-t0,'seconds to swap x and y in array',fld.shape)
+    
+    if conjugate_field_for_genesis:
+        return fld.conjugate()
+    else:
+        return fld
+
+def write_dfl(filename, fld, conjugate_field_for_genesis=True, swapxyQ=True):
+    
+    if swapxyQ:
+        t0 = time.time()
+        fld = np.einsum('ikj->ijk',fld)
+        if verboseQ: print(time.time()-t0,'seconds to swap x and y in array',fld.shape)
+    
+    f=open(filename,"wb")
+    if conjugate_field_for_genesis:
+        fld.astype('complex128').conjugate().tofile(f)
+    else:
+        fld.astype('complex128').tofile(f)
+    f.close()
     
 # pad the grids for better frequency resolution with ffts
 
@@ -441,6 +465,14 @@ def pad_dfl(fld, pads):
     
 def pad_dfl_t(fld, pads):
     fld = np.pad(fld, [pads,[0,0],[0,0]])
+    return fld
+    
+def pad_dfl_x(fld, pads):
+    fld = np.pad(fld, [[0,0],pads,[0,0]])
+    return fld
+    
+def pad_dfl_y(fld, pads):
+    fld = np.pad(fld, [[0,0],[0,0],pads])
     return fld
     
 def pad_dfl_xy(fld, pads):
@@ -455,15 +487,23 @@ def unpad_dfl_t(fld, pads):
     fld = fld[pads[0]:-pads[1],:,:]
     return fld
     
+def unpad_dfl_x(fld, pads):
+    fld = fld[:,pads[0]:-pads[1],:]
+    return fld
+    
+def unpad_dfl_y(fld, pads):
+    fld = fld[:,:,pads[0]:-pads[1]]
+    return fld
+    
 def unpad_dfl_xy(fld, pads):
     fld = fld[:,pads[0]:-pads[1],pads[0]:-pads[1]]
     return fld
 
 # slip field forward along the temporal grid and slip in zeros in the tail
-def slip_fld(fld, dt, slippage_time):
+def slip_fld(fld, dt, slippage_time, trailing_scale_factor=1e-6):
     nslip = int(np.floor(slippage_time / dt))
     fld2 = np.roll(fld,nslip,axis=0)
-    fld2[:nslip] *= 0
+    fld2[:nslip] *= trailing_scale_factor
     # maybe should advance the phase of the radiation by the remainder slippage time also...
     return fld2
 
@@ -498,7 +538,7 @@ def rfp_cpp_binary(fld, xlamds, dgrid, A, B, D, intensity_scale_factor=1., ncar=
     
     # write this field to disk
     t0 = time.time()
-    write_dfl(fld, filename)
+    write_dfl(filename, fld)
     print('took',time.time()-t0,'seconds total to write fld to disk with shape',fld.shape)
 
     # apply rfp to the file
@@ -517,6 +557,16 @@ def rfp_cpp_binary(fld, xlamds, dgrid, A, B, D, intensity_scale_factor=1., ncar=
     
     return fld 
     
+    
+# select only slices with significant power
+def threshold_slice_selection(fld, slice_processing_relative_power_threshold = 1e-6, verboseQ=False):
+        #slice_processing_relative_power_threshold = 1e-6 # only propagate slices where there's beam (0 disables)
+        pows = np.sum(np.abs(fld)**2,axis=(1,2))
+        slice_selection = pows >= np.max(pows) * slice_processing_relative_power_threshold
+        #if verboseQ:
+        u0 = np.sum(pows); u1 = np.sum(pows[slice_selection])
+        print('INFO: threshold_slice_selection - Fraction of power lost is',1.-u1/u0,'for slice_processing_relative_power_threshold of',slice_processing_relative_power_threshold)
+        return slice_selection
 
 # Siegman collimating transform
 # NOTE: dx should be 2*dgrid/ncar
@@ -549,7 +599,7 @@ def st2(fld, lambda_radiation, dgridin, dgridout, ABDlist, ncar, verboseQ = Fals
    
    # apply the phase mask to each slice
    fld *= phasor_mask
-    
+   
    return fld
 
 # inverse Siegman collimating transform
@@ -580,11 +630,11 @@ def sk2(fld, lambda_radiation, dgridin, dgridout, ABDlist, ncar, verboseQ = Fals
    return fld
    
 # function to package up rfp for ease of use
-def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=0, verboseQ=0, cutradius=0, dgridout=-1, kxspace_inQ=False, kxspace_outQ=False):
+def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=0, verboseQ=0, cutradius=0, dgridout=-1, kxspace_inQ=False, kxspace_outQ=False, slice_processing_relative_power_threshold=0):
         
     if A == 1. and B == 0. and D == 1.:
         if kxspace_inQ == kxspace_outQ:
-            return dfl
+            return fld
         else:
             use_siegman_transform = False
             use_siegman_kernel = False
@@ -597,6 +647,17 @@ def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=
         dgridout = dgridin
     M = dgridout/dgridin
     use_siegman_transform &= (1./M-ABDlist[2] != 0. or M-ABDlist[0] != 0.)
+    
+    # process only slices with power
+    if slice_processing_relative_power_threshold > 0:
+        t0 = time.time()
+        fld0 = fld
+        slice_selection = threshold_slice_selection(fld, slice_processing_relative_power_threshold, verboseQ=verboseQ)
+        #print('np.shape(fld) =',np.shape(fld))
+        fld = fld[slice_selection]
+        #print('np.shape(fld) =',np.shape(fld))
+        #if verboseQ: 
+        if verboseQ: print('took',time.time()-t0,'seconds for selecting only',len(fld),'slices with power / max(power) >',slice_processing_relative_power_threshold,'for processing')
 
     #plot_fld_marginalize_t(fld, dgrid) # plot the imported field
 
@@ -606,7 +667,7 @@ def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=
             print('ERROR: applying Siegman collimating transform to reciprocal space instead of real space!')
         t0 = time.time()
         fld = st2(fld, xlamds, dgridin, dgridout, ABDlist, ncar)
-        print('took',time.time()-t0,'seconds total to apply Siegman collimating transform to fld with shape',fld.shape)
+        if verboseQ: print('took',time.time()-t0,'seconds total to apply Siegman collimating transform to fld with shape',fld.shape)
         
     #plot_fld_marginalize_t(fld, dgrid) # plot the imported field
     
@@ -614,13 +675,13 @@ def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=
     if kxspace_inQ:
         t0 = time.time()
         fld = fft(fld,axis=2)
-        print('took',time.time()-t0,'seconds total to apply y fft to fld with shape',fld.shape)
+        if verboseQ: print('took',time.time()-t0,'seconds total to apply y fft to fld with shape',fld.shape)
     else:
         t0 = time.time()
         #fld = fft2(fld) # defaults to last two axes
         fld = fft(fld, axis=1)
         fld = fft(fld, axis=2)
-        print('took',time.time()-t0,'seconds total to apply x and y ffts to fld with shape',fld.shape)
+        if verboseQ: print('took',time.time()-t0,'seconds total to apply x and y ffts to fld with shape',fld.shape)
     
     #plot_fld_marginalize_t(fld, dgrid) # plot the imported field
     
@@ -628,7 +689,7 @@ def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=
     if use_siegman_kernel:
         t0 = time.time()
         fld = sk2(fld, xlamds, dgridin, dgridout, ABDlist, ncar)
-        print('took',time.time()-t0,'seconds total to apply Siegman collimated Huygens kernel to fld with shape',fld.shape)
+        if verboseQ: print('took',time.time()-t0,'seconds total to apply Siegman collimated Huygens kernel to fld with shape',fld.shape)
     
     #plot_fld_marginalize_t(fld, dgrid) # plot the imported field
     
@@ -636,13 +697,13 @@ def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=
     if kxspace_outQ:
         t0 = time.time()
         fld = ifft(fld,axis=2)
-        print('took',time.time()-t0,'seconds total to apply y ifft to fld with shape',fld.shape)
+        if verboseQ: print('took',time.time()-t0,'seconds total to apply y ifft to fld with shape',fld.shape)
     else:
         t0 = time.time()
         #fld = ifft2(fld) # defaults to last two axes
         fld = ifft(fld, axis=1)
         fld = ifft(fld, axis=2)
-        print('took',time.time()-t0,'seconds total to apply x and y iffts to fld with shape',fld.shape)
+        if verboseQ: print('took',time.time()-t0,'seconds total to apply x and y iffts to fld with shape',fld.shape)
     
     # inverse siegman collimating beam transform
     if use_siegman_transform:
@@ -650,9 +711,183 @@ def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=
             print('ERROR: applying Siegman collimating transform to reciprocal space instead of real space!')
         t0 = time.time()
         fld = ist2(fld, xlamds, dgridin, dgridout, ABDlist, ncar)
-        print('took',time.time()-t0,'seconds total to apply Siegman collimating transform to fld with shape',fld.shape)
+        if verboseQ: print('took',time.time()-t0,'seconds total to apply Siegman collimating transform to fld with shape',fld.shape)
+    
+    # release processing mask
+    if slice_processing_relative_power_threshold > 0:
+        t0 = time.time()
+        fld0 *= 0. # clear field
+        fld0[slice_selection] = fld # overwrite field with processed field
+        fld = fld0
+        if verboseQ: print('took',time.time()-t0,'seconds to release selection for slices with power / max(power) >',slice_processing_relative_power_threshold,'for processing')
+    
     
     #plot_fld_marginalize_t(fld, dgrid) # plot the imported field
     
     return fld 
+
+
+def main():
+    import sys
     
+    settings = {}
+    
+    bad_args = False; example_cmd = ''; example_cmd_names = ''
+    if len(sys.argv) < 2:
+        bad_args = True
+        example_cmd_names = sys.argv[0] + ' input_dflfilepath output_dflfilepath'
+        example_cmd = sys.argv[0] + ' test test '
+    try: 
+        settings['readfilename'] = sys.argv[1]; iarg = 1
+        if settings['readfilename'].lower() == 'none' or settings['readfilename'].lower() == 'test' or settings['readfilename'].lower() == 'testin': 
+            settings['readfilename'] = None
+    except:
+        settings['readfilename'] = None
+    
+    try:
+        iarg+=1; settings['writefilename'] = int(sys.argv[iarg])
+        if settings['readfilename'] == None or settings['writefilename'].lower() == 'none' or settings['writefilename'].lower() == 'test': 
+            settings['writefilename'] = None
+    except:
+        settings['writefilename'] = None
+    
+    try:
+        iarg+=1; settings['ncar'] = int(sys.argv[iarg])
+    except:
+        example_cmd_names += ' ncar'
+        example_cmd += ' ' + str(251)
+    try:
+        iarg+=1; settings['dgrid'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' dgrid'
+        example_cmd += ' ' + str(7.5e-04)
+    try:
+        iarg+=1; settings['xlamds'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' xlamds'
+        example_cmd += ' ' + str(1.261043e-10) # 9831.87 eV # on the Bragg reflection resonance
+    #settings['xlamds'] = 1.301000e-10 # 9529.92 eV
+    #settings['xlamds'] = 1.261034e-10 # 9831.95 eV # slightly off the center of the Bragg resonance
+    #settings['xlamds'] = 1.261043e-10 # 9831.87 eV # on the Bragg reflection resonance
+    try:
+        iarg+=1; settings['zsep'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' zsep'
+        example_cmd += ' ' + str(4.000000e+01)
+    try:
+        iarg+=1; settings['isradi'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' isradi'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; settings['A'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' A'
+        example_cmd += ' ' + str(1)
+    try:
+        iarg+=1; settings['B'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' B'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; settings['D'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' D'
+        example_cmd += ' ' + str(1)
+    try:
+        iarg+=1; settings['dgridout'] = float(sys.argv[iarg])
+    except:
+        dgridout = -1
+        example_cmd_names += ' dgridout'
+        example_cmd += ' ' + str(-1)
+    try:
+        iarg+=1; settings['showPlotQ'] = int(sys.argv[iarg])
+    except:
+        example_cmd_names += ' showPlotQ'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; settings['savePlotQ'] = int(sys.argv[iarg])
+    except:
+        example_cmd_names += ' savePlotQ'
+        example_cmd += ' ' + str(1)
+    try:
+        iarg+=1; settings['slice_processing_relative_power_threshold'] = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' slice_processing_relative_power_threshold'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; settings['verboseQ'] = int(sys.argv[iarg])
+    except:
+        settings['verboseQ'] = 1
+        example_cmd_names += ' verboseQ'
+        example_cmd += ' ' + str(1)
+    
+    if bad_args:
+        print('Usage: ',example_cmd_names)
+        print('Example: ',example_cmd)
+        print('Note: set input_dflfilepath to test or none to try to use an ideal Gaussian beam')
+        print('Note: set output_dflfilepath to none to suppress writing to disk')
+        return
+    
+    print(settings); s = settings
+    
+    if settings['readfilename'] == None:
+        saveFilenamePrefix = 'test'
+    else:
+        saveFilenamePrefix = settings['readfilename']
+    showPlotQ = settings['showPlotQ']
+    savePlotQ = settings['savePlotQ']
+    verboseQ = settings['verboseQ']
+    
+    # load field
+    dt = s['xlamds'] * s['zsep'] * max(1,s['isradi']) / 299792458
+    if settings['readfilename'] == None:
+        # make a new field
+        t0 = time.time()
+        settings['ncar']=201; settings['dgrid']=750e-6; dt*=1.; fld = make_gaus_beam(ncar=settings['ncar'], dgrid=settings['dgrid'], w0=80e-6, dt=dt, nslice=4096, trms=3.e-15)
+        #settings['ncar']=121; settings['dgrid']=500e-6; dt*=10.; fld = make_gaus_beam(ncar=settings['ncar'], dgrid=settings['dgrid'], w0=80e-6, dt=dt, nslice=1024, trms=3.e-15)
+        #settings['ncar']=121; settings['dgrid']=200e-6; dt*=100.; fld = make_gaus_beam(ncar=settings['ncar'], dgrid=settings['dgrid'], w0=80e-6, dt=dt, nslice=128, trms=3.e-15)
+        if verboseQ: print('took',time.time()-t0,'seconds total to make field with dimensions',fld.shape)
+    else:
+        ## import a field from a file on disk
+        ##readfilename = '/nfs/slac/g/beamphysics/jytang/genesis/lasershaping2/cavity/flattop_flatbeam/gen_tap0.021_K1.1742_s0_a.out.dfl'
+        #readfilename = '/gpfs/slac/staas/fs1/g/g.beamphysics/jytang/genesis/lasershaping2/cavity/flattop_flatbeam/gen_tap0.021_K1.1742_s0_a.out.dfl'
+        ##readfilename = '/u/ra/jduris/code/genesis_dfl_tools/rfp_radiation_field_propagator/myfile.dfl'
+        ##readfilename = sys.argv[1]
+        print('Reading in',settings['readfilename'])
+        t0 = time.time()
+        fld = read_dfl(settings['readfilename'], ncar=settings['ncar'], verboseQ=verboseQ) # read the field from disk
+        if verboseQ: print('took',time.time()-t0,'seconds total to read in and format the field with dimensions',fld.shape)
+    
+    # plot the field
+    if showPlotQ or savePlotQ:
+        import logging
+        logging.getLogger('matplotlib.font_manager').disabled = True # suppress findfont warnings
+        plot_fld_marginalize_t(fld, settings['dgrid'], dt=dt, saveFilename=saveFilenamePrefix+'_init_xy.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+        if fld.shape[0] > 1:
+            plot_fld_slice(fld, settings['dgrid'], dt=dt, slice=-2, saveFilename=saveFilenamePrefix+'_init_tx.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+            plot_fld_slice(fld, settings['dgrid'], dt=dt, slice=-1, saveFilename=saveFilenamePrefix+'_init_ty.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+            plot_fld_power(fld, dt=dt, saveFilename=saveFilenamePrefix+'_init_t.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+    
+    # transport field
+    fld = rfp(fld, s['xlamds'], s['dgrid'], A=s['A'], B=s['B'], D=s['D'], ncar=s['ncar'], cutradius=0, dgridout=s['dgridout'], kxspace_inQ=0, kxspace_outQ = 0, slice_processing_relative_power_threshold=s['slice_processing_relative_power_threshold'], verboseQ=verboseQ)
+    
+    # plot the field
+    if showPlotQ or savePlotQ:
+        plot_fld_marginalize_t(fld, settings['dgrid'], dt=dt, saveFilename=saveFilenamePrefix+'_prop_xy.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+        if fld.shape[0] > 1:
+            plot_fld_slice(fld, settings['dgrid'], dt=dt, slice=-2, saveFilename=saveFilenamePrefix+'_prop_tx.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+            plot_fld_slice(fld, settings['dgrid'], dt=dt, slice=-1, saveFilename=saveFilenamePrefix+'_prop_ty.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+            #plot_fld_power(fld, dt=dt, saveFilename=saveFilenamePrefix+'_prop_t.png',showPlotQ=showPlotQ,savePlotQ=savePlotQ) # plot the imported field
+    
+    ## write field to disk
+    if settings['readfilename'] != None and settings['writefilename'] != None:
+        try:
+            print('Writing to',settings['writefilename'])
+            #writefilename = readfilename + 'r'
+            write_dfl(settings['writefilename'], fld, verboseQ=verboseQ)
+        except:
+            print('ERROR: Could not write field to file',settings['writefilename'])
+    
+if __name__ == '__main__':
+    main()
