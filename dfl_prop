@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+# -*- coding: iso-8859-1 -*-
+
+# rfp - radiation field propagator
+# tools for manipulating genesis dfl field files
+# J. Duris jduris@slac.stanford.edu
+
+from __future__ import print_function
+import numpy as np
+import matplotlib.pyplot as plt
+from rfp import *
+import sys, time
+
+def main():
+    
+    settings = {}
+    
+    bad_args = False; example_cmd = ''; example_cmd_names = ''
+    if len(sys.argv) < 2:
+        bad_args = True
+        example_cmd_names = sys.argv[0] + ' input_dflfilepath output_dflfilepath'
+        example_cmd = sys.argv[0] + ' testin.dfl testout.dfl '
+    try: 
+        readfilename = sys.argv[1]; iarg = 1
+        if readfilename.lower() == 'none' or readfilename.lower() == 'test' or readfilename.lower() == 'testin': 
+            readfilename = None
+    except:
+        readfilename = None
+    
+    try:
+        iarg+=1; writefilename = sys.argv[iarg]
+        if readfilename == None or writefilename.lower() == 'none' or writefilename.lower() == 'test': 
+            writefilename = None
+    except:
+        writefilename = None
+        
+    try:
+        iarg+=1; ncar = int(sys.argv[iarg])
+    except:
+        example_cmd_names += ' ncar'
+        example_cmd += ' ' + str(251)
+    try:
+        iarg+=1; dgrid = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' dgridin'
+        example_cmd += ' ' + str(7.5e-04)
+    try:
+        iarg+=1; xlamds = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' xlamds'
+        example_cmd += ' ' + str(1.261043e-10) # 9831.87 eV # on the Bragg reflection resonance
+    #settings['xlamds'] = 1.301000e-10 # 9529.92 eV
+    #settings['xlamds'] = 1.261034e-10 # 9831.95 eV # slightly off the center of the Bragg resonance
+    #settings['xlamds'] = 1.261043e-10 # 9831.87 eV # on the Bragg reflection resonance
+    try:
+        iarg+=1; zsep = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' zsep'
+        example_cmd += ' ' + str(4.000000e+01)
+    try:
+        iarg+=1; isradi = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' isradi'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; A = float(sys.argv[iarg])
+    except:
+        A = 1
+        example_cmd_names += ' A'
+        example_cmd += ' ' + str(1)
+    try:
+        iarg+=1; B = float(sys.argv[iarg])
+    except:
+        B = 0
+        example_cmd_names += ' B'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; D = float(sys.argv[iarg])
+    except:
+        D = 1
+        example_cmd_names += ' D'
+        example_cmd += ' ' + str(1)
+    try:
+        iarg+=1; dgridout = float(sys.argv[iarg])
+    except:
+        try:
+            dgridout = dgrid
+        except:
+            dgridout = -1
+        example_cmd_names += ' dgridout'
+        example_cmd += ' ' + str(1)
+    try:
+        iarg+=1; showPlotQ = float(sys.argv[iarg])
+    except:
+        showPlotQ = 0
+        example_cmd_names += ' showPlotQ'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; power_scale_factor = float(sys.argv[iarg])
+    except:
+        power_scale_factor = 1.
+        example_cmd_names += ' power_scale_factor'
+        example_cmd += ' ' + str(1)
+        
+    if bad_args:
+        print('Usage: ',example_cmd_names)
+        print('Example: ',example_cmd)
+        #print('Note: set input_dflfilepath to test or none to try to use an ideal Gaussian beam')
+        print('Note: set output_dflfilepath to none to suppress writing to disk')
+        return
+        
+    print('readfilename = ',readfilename)
+    print('writefilename = ',writefilename)
+        
+    plotQ = showPlotQ != 0 # write and/or save plots
+    dt = 1. # time between slices needed if we want to plot power vs time
+    
+    # read in dfl file
+    print('Reading in',readfilename)
+    t0 = time.time()
+    fld = read_dfl(readfilename, ncar=ncar) # read the field from disk
+    print('took',time.time()-t0,'seconds total to read in and format the field with dimensions',fld.shape)
+    
+    if plotQ:
+        readfilenameprefix = readfilename.split('.dfl')[0]
+        plot_fld_marginalize_t(fld, dgrid, dt=dt, saveFilename=readfilenameprefix+'_Pvsxy.png',showPlotQ=plotQ) # plot the imported field
+        #plot_fld_slice(fld, dgrid, dt=dt, slice=-2, saveFilename=readfilenameprefix+'_Pvstx.png',showPlotQ=plotQ) # plot the imported field
+        #plot_fld_slice(fld, dgrid, dt=dt, slice=-1, saveFilename=readfilenameprefix+'_Pvsty.png',showPlotQ=plotQ) # plot the imported field
+        #plot_fld_power(fld, dt=dt, saveFilename=readfilenameprefix+'_Pvst.png',showPlotQ=plotQ) # plot the imported field
+
+    # propagate the field
+    print('Applying transport matrix with params A =',A,'B =',B,'D =',D,'matrix')
+    fld = rfp(fld, xlamds, dgrid, A, B, D, intensity_scale_factor=1., ncar=ncar, nslip=0, verboseQ=0, dgridout=dgridout)
+
+    # scale field power
+    if power_scale_factor is not 1.:
+        print('Scaling radiation power by a factor of', np.sqrt(power_scale_factor))
+        fld *= np.sqrt(power_scale_factor)
+
+    # write dfl file to disk
+    if writefilename != None:
+        print('Writing to',writefilename)
+        write_dfl(writefilename, fld)
+        
+    if plotQ:
+        try:
+            writefilenameprefix = writefilename.split('.dfl')[0]
+        except:
+            writefilenameprefix = readfilenameprefix+'_prop'
+        plot_fld_marginalize_t(fld, dgrid, dt=dt, saveFilename=writefilenameprefix+'_Pvsxy.png',showPlotQ=plotQ) # plot the imported field
+        #plot_fld_slice(fld, dgrid, dt=dt, slice=-2, saveFilename=readfilenameprefix+'_Pvstx.png',showPlotQ=plotQ) # plot the imported field
+        #plot_fld_slice(fld, dgrid, dt=dt, slice=-1, saveFilename=readfilenameprefix+'_Pvsty.png',showPlotQ=plotQ) # plot the imported field
+        #plot_fld_power(fld, dt=dt, saveFilename=readfilenameprefix+'_Pvst.png',showPlotQ=plotQ) # plot the imported field
+    
+    
+
+if __name__ == "__main__":
+    main()
+    
+
