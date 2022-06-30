@@ -1,8 +1,11 @@
 # -*- coding: iso-8859-1 -*-
 
-"""
-ported from Gabe Marcus' matlab function based on https://journals.aps.org/prab/pdf/10.1103/PhysRevSTAB.15.100702
-"""
+# rfp - radiation field propagator
+# tools for manipulating genesis dfl field files
+# J. Duris jduris@slac.stanford.edu
+
+# Bragg mirror code ported to python from Gabe Marcus' matlab function based on https://journals.aps.org/prab/pdf/10.1103/PhysRevSTAB.15.100702
+
 
 from __future__ import print_function
 import numpy as np
