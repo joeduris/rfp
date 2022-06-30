@@ -331,7 +331,10 @@ def plot_fld_slice(fld, dgrid = 400.e-6, dt=1e-6/3e8, slice=None, ax=None, saveF
     if logScaleQ:
         ax.set_yscale('log')
     if saveFilename != None and savePlotQ:
-        plt.savefig(saveFilename, bbox_inches='tight')
+        try:
+            plt.savefig(saveFilename, bbox_inches='tight')
+        except:
+            print('WARNING - rfp: Could not save',saveFilename)
     if showPlotQ:
         plt.show()
     plt.close()
@@ -442,7 +445,7 @@ def read_dfl(filename, ncar=251, verboseQ=1, conjugate_field_for_genesis=True, s
     else:
         return fld
 
-def write_dfl(filename, fld, conjugate_field_for_genesis=True, swapxyQ=True):
+def write_dfl(filename, fld, conjugate_field_for_genesis=True, swapxyQ=True, verboseQ=False):
     
     if swapxyQ:
         t0 = time.time()
@@ -726,6 +729,78 @@ def rfp(fld, xlamds, dgridin, A, B, D, intensity_scale_factor=1., ncar=0, nslip=
     
     return fld 
 
+def rolling_average(data,kernel_size):
+    kernel = np.ones(kernel_size) / kernel_size
+    return np.convolve(data, kernel, mode='same')
+
+try:
+    from scipy.stats import median_abs_deviation as mad
+except:
+    def mad(arr):
+        med = np.median(arr)
+        _mad = np.median(np.abs(np.array(arr) - med))
+        return _mad
+
+def plot_phase_and_roc(fld, ncar, dgrid, xlamds,kernel_size=11,printQ=False):
+    # ipeak = np.argmax(np.sum(np.sum(np.abs(fld)**2,axis=1),axis=1))
+    imid = int(ncar/2); dimid = int(ncar*0.1)
+    # ipeak = np.argmax(np.abs(fld[:,imid,imid])**2)
+    ipeak = np.argmax(np.sum(np.sum(np.abs(fld[:,imid-dimid:imid+dimid,imid-dimid:imid+dimid])**2,axis=1),axis=1))
+    xs=dgrid*np.linspace(-1,1,ncar)
+    dx_m = xs[1] - xs[0]; xs *= 1e6
+    
+    powx = rolling_average(np.abs(fld[ipeak,:,imid])**2,kernel_size=kernel_size)
+    powy = rolling_average(np.abs(fld[ipeak,imid])**2,kernel_size=kernel_size)
+    wx = fwhm(powx)[0] * dx_m
+    wy = fwhm(powy)[0] * dx_m
+    plt.plot(xs,powx,label='x');
+    plt.plot(xs,powy,label='y');
+    plt.xlabel('Transverse position (um)');plt.ylabel('Slice power (arb.)');
+    plt.tight_layout(); plt.legend(); plt.show()
+    
+    xphase = np.unwrap(np.angle(fld[ipeak,:,imid]))
+    yphase = np.unwrap(np.angle(fld[ipeak,imid]))
+    # plt.plot(xs,xphase,label='x');
+    # plt.plot(xs,yphase);
+    yphase = rolling_average(yphase,kernel_size=kernel_size)
+    xphase = rolling_average(xphase,kernel_size=kernel_size)
+    plt.plot(xs,xphase,label='x');
+    plt.plot(xs,yphase,label='y');
+    plt.xlabel('Transverse position (um)');plt.ylabel('phase (rad)');
+    plt.tight_layout(); plt.legend(); plt.show()
+
+    phasefactor=-2.*np.pi/xlamds*dx_m**2
+    rocy = np.diff(np.diff(yphase))
+    rocx = np.diff(np.diff(xphase))
+    rocy = rolling_average(rocy,kernel_size=kernel_size)
+    rocx = rolling_average(rocx,kernel_size=kernel_size)
+#     plt.plot(xs[1:-1],rocx); plt.plot(xs[1:-1],rocy); plt.show()
+    rocy = 1./phasefactor/rocy
+    rocx = 1./phasefactor/rocx
+    plt.plot(xs[1:-1],rocx,label='x'); plt.plot(xs[1:-1],rocy,label='y'); 
+    rocs = np.reshape([rocy,rocx],-1); rocmean = np.median(rocs); rocstd = mad(rocs)
+    try:
+        ylim = np.array([-1,1]) * rocstd + rocmean; plt.ylim(ylim)
+    except:
+        pass
+    plt.xlabel('Transverse position (um)');plt.ylabel('Radius of curvature (m)');
+    plt.tight_layout(); plt.legend(); plt.show()
+    
+    Rx = rocx[imid]; Ry = rocy[imid]; pi = np.pi
+    z0x = pi**2 * Rx * wx**4 / (pi**2 * wx**4 + Rx**2 * xlamds**2)
+    z0y = pi**2 * Ry * wy**4 / (pi**2 * wy**4 + Ry**2 * xlamds**2)
+    w0x = Rx * wx * xlamds / np.sqrt(pi**2 * wx**4 + Rx**2 * xlamds**2)
+    w0y = Ry * wy * xlamds / np.sqrt(pi**2 * wy**4 + Ry**2 * xlamds**2)
+    zrx = pi * w0x**2 / xlamds; zry = pi * w0y**2 / xlamds
+    #Solve[{R == z (1 + (zr/z)^2), w^2 == w0^2 (1 + (z/zr)^2)} /. zr -> \[Pi] w0^2/\[Lambda]0, {z, w0}]
+    
+    zwdic = {'Rx':Rx, 'Ry':Ry, 'wx':wx, 'wy':wy, 'z0x':z0x, 'z0y':z0y, 'w0x':w0x, 'w0y':w0y, 'zrx':zrx, 'zry':zry}
+    if printQ:print(zwdic)
+    
+    return zwdic
+
+# plot_phase_and_roc(fld,g.input['ncar'],g.input['dgrid'],g.input['xlamds'])
+
 
 def main():
     import sys
@@ -891,3 +966,4 @@ def main():
     
 if __name__ == '__main__':
     main()
+    
