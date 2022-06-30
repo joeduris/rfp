@@ -1,0 +1,107 @@
+#!/usr/bin/env python
+# -*- coding: iso-8859-1 -*-
+
+# dfl_plot - Script to plot dfl files
+
+# rfp - radiation field propagator
+# tools for manipulating genesis dfl field files
+# J. Duris jduris@slac.stanford.edu
+
+from __future__ import print_function
+import numpy as np
+import matplotlib.pyplot as plt
+from rfp import *
+import sys, time
+
+def main():
+    
+    settings = {}
+    
+    bad_args = False; example_cmd = ''; example_cmd_names = ''
+    if len(sys.argv) < 2:
+        bad_args = True
+        example_cmd_names = sys.argv[0] + ' input_dflfilepath '
+        example_cmd = sys.argv[0] + ' testin.dfl  '
+    try: 
+        readfilename = sys.argv[1]; iarg = 1
+        if readfilename.lower() == 'none' or readfilename.lower() == 'test' or readfilename.lower() == 'testin': 
+            readfilename = None
+    except:
+        readfilename = None
+        
+    try:
+        iarg+=1; ncar = int(sys.argv[iarg])
+    except:
+        example_cmd_names += ' ncar'
+        example_cmd += ' ' + str(251)
+    try:
+        iarg+=1; dgrid = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' dgridin'
+        example_cmd += ' ' + str(7.5e-04)
+    try:
+        iarg+=1; xlamds = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' xlamds'
+        example_cmd += ' ' + str(1.261043e-10) # 9831.87 eV # on the Bragg reflection resonance
+    #settings['xlamds'] = 1.301000e-10 # 9529.92 eV
+    #settings['xlamds'] = 1.261034e-10 # 9831.95 eV # slightly off the center of the Bragg resonance
+    #settings['xlamds'] = 1.261043e-10 # 9831.87 eV # on the Bragg reflection resonance
+    try:
+        iarg+=1; zsep = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' zsep'
+        example_cmd += ' ' + str(4.000000e+01)
+    try:
+        iarg+=1; isradi = float(sys.argv[iarg])
+    except:
+        example_cmd_names += ' isradi'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; showPlotQ = float(sys.argv[iarg])
+    except:
+        showPlotQ = 0.
+        example_cmd_names += ' showPlotQ'
+        example_cmd += ' ' + str(0)
+    try:
+        iarg+=1; savePlotQ = float(sys.argv[iarg])
+    except:
+        savePlotQ = 1.
+        example_cmd_names += ' savePlotQ'
+        example_cmd += ' ' + str(0)
+        
+    if bad_args:
+        print('Usage: ',example_cmd_names)
+        print('Example: ',example_cmd)
+        return
+        
+    print('readfilename = ',readfilename)
+    
+    showPlotQ = abs(showPlotQ) > 0
+    savePlotQ = abs(savePlotQ) > 0
+    plotQ = showPlotQ or savePlotQ # write and/or save plots
+    savePlotQ = int(savePlotQ)
+    
+    dt = 1. # time between slices needed if we want to plot power vs time
+    
+    # read in dfl file
+    print('Reading in',readfilename)
+    t0 = time.time()
+    fld = read_dfl(readfilename, ncar=ncar) # read the field from disk
+    print('took',time.time()-t0,'seconds total to read in and format the field with dimensions',fld.shape)
+    
+    if plotQ:
+        readfilenameprefix = readfilename.split('.dfl')[0]
+        plot_fld_marginalize_t(fld, dgrid, dt=dt, saveFilename=[None,readfilenameprefix+'_Pvsxy.png'][savePlotQ],showPlotQ=showPlotQ) # plot the imported field
+        try:
+            plot_fld_slice(fld, dgrid, dt=dt, slice=-2, saveFilename=[None,readfilenameprefix+'_Pvstx.png'][savePlotQ],showPlotQ=showPlotQ) # plot the imported field
+            plot_fld_slice(fld, dgrid, dt=dt, slice=-1, saveFilename=[None,readfilenameprefix+'_Pvsty.png'][savePlotQ],showPlotQ=showPlotQ) # plot the imported field
+            #plot_fld_power(fld, dt=dt, saveFilename=[None,readfilenameprefix+'_Pvst.png'][savePlotQ],showPlotQ=showPlotQ) # plot the imported field
+        except:
+            pass
+
+
+if __name__ == "__main__":
+    main()
+    
+
